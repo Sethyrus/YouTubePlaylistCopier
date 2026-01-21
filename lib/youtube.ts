@@ -132,10 +132,16 @@ export const getPlaylistDetails = async (
 
 export const listPlaylistItems = async (
   playlistId: string,
-  accessToken: string
+  accessToken: string,
+  options?: {
+    stopWhenVideoIds?: Set<string>;
+  }
 ): Promise<PlaylistVideo[]> => {
   const items: PlaylistVideo[] = [];
   let pageToken: string | undefined;
+  const remainingIds = options?.stopWhenVideoIds
+    ? new Set(options.stopWhenVideoIds)
+    : null;
 
   do {
     const data = await youtubeRequest<PlaylistItemsResponse>({
@@ -160,6 +166,16 @@ export const listPlaylistItems = async (
 
     items.push(...pageItems);
     pageToken = data.nextPageToken;
+
+    if (remainingIds) {
+      for (const item of pageItems) {
+        remainingIds.delete(item.videoId);
+      }
+
+      if (remainingIds.size === 0) {
+        break;
+      }
+    }
   } while (pageToken);
 
   return items;
@@ -203,14 +219,38 @@ export const findUserPlaylistByTitle = async (
   accessToken: string,
   title: string
 ): Promise<UserPlaylist | null> => {
-  const playlists = await listUserPlaylists(accessToken);
   const normalizedTitle = title.trim().toLowerCase();
+  let pageToken: string | undefined;
 
-  return (
-    playlists.find(
-      (playlist) => playlist.title.trim().toLowerCase() === normalizedTitle
-    ) ?? null
-  );
+  do {
+    const data = await youtubeRequest<UserPlaylistsResponse>({
+      accessToken,
+      path: "playlists",
+      params: {
+        part: "snippet",
+        mine: "true",
+        maxResults: 50,
+        pageToken,
+      },
+    });
+
+    const match = data.items?.find((item) => {
+      const itemTitle = item.snippet?.title ?? "";
+      return itemTitle.trim().toLowerCase() === normalizedTitle;
+    });
+
+    if (match?.id) {
+      return {
+        id: match.id,
+        title: match.snippet?.title ?? "",
+        description: match.snippet?.description ?? "",
+      };
+    }
+
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+
+  return null;
 };
 
 export const createPlaylist = async (

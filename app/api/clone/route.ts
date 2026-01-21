@@ -46,13 +46,18 @@ export async function POST(request: Request): Promise<NextResponse> {
           privacyStatus: "public",
         });
 
-    const destinationItems = await listPlaylistItems(
-      destinationId,
-      session.accessToken
-    );
-    const existingVideoIds = new Set(
-      destinationItems.map((item) => item.videoId)
-    );
+    let existingVideoIds = new Set<string>();
+    if (existingPlaylist) {
+      const sourceVideoIds = new Set(items.map((item) => item.videoId));
+      const destinationItems = await listPlaylistItems(
+        destinationId,
+        session.accessToken,
+        { stopWhenVideoIds: sourceVideoIds }
+      );
+      existingVideoIds = new Set(
+        destinationItems.map((item) => item.videoId)
+      );
+    }
 
     const sortedItems = [...items].sort((a, b) => a.position - b.position);
     const errors: CloneResponse["errors"] = [];
