@@ -13,8 +13,24 @@ type FormState = {
   result: CloneResponse | null;
 };
 
+type ImportState = {
+  playlistName: string;
+  file: File | null;
+  isSubmitting: boolean;
+  error: string | null;
+  result: CloneResponse | null;
+};
+
 const initialState: FormState = {
   playlistUrl: "",
+  isSubmitting: false,
+  error: null,
+  result: null,
+};
+
+const initialImportState: ImportState = {
+  playlistName: "",
+  file: null,
   isSubmitting: false,
   error: null,
   result: null,
@@ -23,9 +39,58 @@ const initialState: FormState = {
 export default function HomeClient() {
   const { data: session, status } = useSession();
   const [state, setState] = useState<FormState>(initialState);
+  const [importState, setImportState] = useState<ImportState>(
+    initialImportState
+  );
 
   const updateState = (updates: Partial<FormState>) => {
     setState((prev) => ({ ...prev, ...updates }));
+  };
+
+  const updateImportState = (updates: Partial<ImportState>) => {
+    setImportState((prev) => ({ ...prev, ...updates }));
+  };
+
+  const handleImportSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!importState.playlistName.trim()) {
+      updateImportState({ error: "Introduce un nombre para la playlist." });
+      return;
+    }
+
+    if (!importState.file) {
+      updateImportState({ error: "Selecciona un archivo JSON." });
+      return;
+    }
+
+    updateImportState({ isSubmitting: true, error: null, result: null });
+
+    try {
+      const formData = new FormData();
+      formData.append("playlistName", importState.playlistName.trim());
+      formData.append("file", importState.file);
+
+      const response = await fetch("/api/import", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      } & CloneResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "No se pudo importar la playlist.");
+      }
+
+      updateImportState({ result: data, isSubmitting: false });
+    } catch (error) {
+      updateImportState({
+        error: error instanceof Error ? error.message : "Error inesperado.",
+        isSubmitting: false,
+      });
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -155,6 +220,62 @@ export default function HomeClient() {
       </form>
 
       {state.result && <CloneResult result={state.result} />}
+
+      <div className="mt-10 border-t border-black/10 pt-6">
+        <h3 className="text-lg font-semibold text-zinc-900">
+          Importar desde JSON
+        </h3>
+        <p className="mt-2 text-sm text-zinc-600">
+          Sube un archivo JSON con la columna &quot;Video url&quot; y elige el nombre de
+          la playlist destino.
+        </p>
+
+        <form onSubmit={handleImportSubmit} className="mt-4 space-y-4">
+          <label className="block text-sm font-semibold text-zinc-800">
+            Nombre de la playlist
+            <input
+              value={importState.playlistName}
+              onChange={(event) =>
+                updateImportState({ playlistName: event.target.value })
+              }
+              placeholder="Mi nueva playlist"
+              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-900 focus:outline-none"
+            />
+          </label>
+
+          <label className="block text-sm font-semibold text-zinc-800">
+            Archivo JSON
+            <input
+              type="file"
+              accept="application/json"
+              onChange={(event) =>
+                updateImportState({
+                  file: event.target.files?.[0] ?? null,
+                })
+              }
+              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm text-zinc-900 shadow-sm file:mr-4 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white"
+            />
+          </label>
+
+          {importState.error && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {importState.error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={importState.isSubmitting}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
+          >
+            {importState.isSubmitting
+              ? "Importando playlist..."
+              : "Importar playlist"}
+          </button>
+        </form>
+
+        {importState.result && <CloneResult result={importState.result} />}
+      </div>
     </div>
   );
 }
